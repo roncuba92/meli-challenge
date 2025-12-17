@@ -38,9 +38,25 @@ También puedes activar el entorno (`source .venv/bin/activate`), entrar a `tool
    - **Local (PC)**: guarda `show running-config` en `repositorio_backups/` (se crea en la raíz del proyecto si no existe).
    - **Servidor Remoto (TFTP)**: ingresa IP TFTP y pulsa **Enviar a TFTP**. La salida del comando de copia se registra.
 
+## TXT de switches (multi-switch)
+Puedes cargar un archivo `.txt` separado por comas con `ip` y `hostname` para aplicar las VLANs a varios switches y asignar el hostname correspondiente.
+
+Formato esperado (`.txt` separado por comas):
+```csv
+ip,hostname
+10.0.0.10,SW_CORE_01
+10.0.0.11,SW_ACCESS_01
+```
+
+Ejemplo incluido: `tools/NetConfigurator/examples/switches_example.txt`.
+
 ## Validación y logs
 - El backend revisa que el hostname resulte el esperado y que cada VLAN solicitada exista con el nombre indicado; cualquier discrepancia se muestra en los logs y en la alerta de la UI.
 - Errores devueltos por el switch (comandos inválidos, VLAN fuera de rango, etc.) se registran y la tarea se marca como desviación.
+
+## Logs de ejecución
+- Cada ejecución genera un folder en `tools/NetConfigurator/runs/` con `run.log` y `summary.csv`.
+- `summary.csv` incluye un resumen por switch con estado `OK/WARN/ERROR`.
 
 ## Estructura del proyecto
 - `tools/NetConfigurator/main.py`: interfaz gráfica y gestión de tareas encoladas.
