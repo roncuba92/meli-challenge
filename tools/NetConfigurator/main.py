@@ -152,6 +152,14 @@ class AplicacionRed(ctk.CTk):
         self.arbol_tareas.pack(side="left", fill="both", expand=True, padx=(20,0), pady=(0,10))
         barra_desplazamiento.pack(side="right", fill="y", pady=(0,10), padx=(0,20))
 
+        self.marco_progreso = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
+        self.marco_progreso.pack(fill="x", padx=20, pady=(0, 10))
+        self.etiqueta_progreso = ctk.CTkLabel(self.marco_progreso, text="Progreso: 0%", font=("Segoe UI", 10), text_color="#777")
+        self.etiqueta_progreso.pack(anchor="w")
+        self.barra_progreso = ctk.CTkProgressBar(self.marco_progreso, height=10, progress_color=COLOR_ACCION_PRINCIPAL)
+        self.barra_progreso.pack(fill="x", pady=(4, 0))
+        self.barra_progreso.set(0)
+
         pie = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
         pie.pack(fill="x", padx=20, pady=(0, 20), side="bottom")
         pie.columnconfigure(0, weight=1)
@@ -210,6 +218,19 @@ class AplicacionRed(ctk.CTk):
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         self.caja_logs.insert("end", f"[{timestamp}] {msg}\n")
         self.caja_logs.see("end")
+
+    def _actualizar_progreso(self, fraccion, texto=None):
+        fraccion = max(0.0, min(1.0, fraccion))
+
+        def _update():
+            self.barra_progreso.set(fraccion)
+            if texto:
+                self.etiqueta_progreso.configure(text=texto)
+            else:
+                porcentaje = int(fraccion * 100)
+                self.etiqueta_progreso.configure(text=f"Progreso: {porcentaje}%")
+
+        self.after(0, _update)
 
     def _insertar_tarea(self, tipo, descripcion, payload):
         item_id = self.arbol_tareas.insert("", "end", values=(tipo, descripcion))
@@ -286,6 +307,7 @@ class AplicacionRed(ctk.CTk):
     def _worker_ejecutar_cola(self):
         elementos = self.arbol_tareas.get_children()
         if not elementos:
+            self._actualizar_progreso(0, "Progreso: 0%")
             messagebox.showinfo("Info", "Lista vacía")
             return
 
@@ -293,8 +315,23 @@ class AplicacionRed(ctk.CTk):
         lista_tareas = [t for t in lista_tareas if t]  # filtra nulos por si faltan entradas
 
         try:
-            nuevo_prompt, desviaciones = self.backend.aplicar_cambios(self._obtener_credenciales(), lista_tareas, callback_log=self.registrar)
-            
+            def progreso_cb(fraccion, descripcion):
+                porcentaje = int(fraccion * 100)
+                if descripcion:
+                    detalle = f"{descripcion} ({porcentaje}%)"
+                else:
+                    detalle = f"Progreso: {porcentaje}%"
+                self._actualizar_progreso(fraccion, detalle)
+
+            self._actualizar_progreso(0, "Preparando... (0%)")
+            nuevo_prompt, desviaciones = self.backend.aplicar_cambios(
+                self._obtener_credenciales(),
+                lista_tareas,
+                callback_log=self.registrar,
+                callback_progreso=progreso_cb,
+            )
+            self._actualizar_progreso(1, "Progreso: 100%")
+
             if nuevo_prompt:
                 self.etiqueta_estado.configure(text=f"Online: {nuevo_prompt}", text_color="#27AE60")
                 self.etiqueta_punto.configure(text_color="#27AE60")

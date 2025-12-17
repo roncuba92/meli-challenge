@@ -20,17 +20,24 @@ class GestorRed:
         with ConnectHandler(**info_dispositivo) as conn:
             return conn.find_prompt()
 
-    def aplicar_cambios(self, info_dispositivo, lista_tareas, callback_log=None):
+    def aplicar_cambios(self, info_dispositivo, lista_tareas, callback_log=None, callback_progreso=None):
         registrar = callback_log or (lambda *_: None)
+        reportar_progreso = callback_progreso or (lambda *_: None)
         registrar(">>> INICIANDO CONEXIÓN SSH...")
 
         hostname_esperado = None
         vlans_esperadas = {}
         desviaciones = []
 
+        total_tareas = len(lista_tareas)
+        reportar_progreso(0.02, "Conectando por SSH")
+
         with ConnectHandler(**info_dispositivo) as conn:
+            reportar_progreso(0.07, "Habilitando modo enable")
             conn.enable()
-            for tarea in lista_tareas:
+            if total_tareas:
+                reportar_progreso(0.1, f"Aplicando tareas: 0/{total_tareas}")
+            for indice, tarea in enumerate(lista_tareas, start=1):
                 tipo_tarea = tarea.get("tipo")
                 descripcion_tarea = tarea.get("descripcion", "")
                 registrar(f"Procesando: {descripcion_tarea}")
@@ -76,10 +83,19 @@ class GestorRed:
                     registrar(f"⚠ Tipo de tarea no reconocido: {tipo_tarea}")
                     desviaciones.append(f"Tarea desconocida ignorada: {tipo_tarea}")
 
+                if total_tareas:
+                    fraccion = 0.1 + (indice / total_tareas) * 0.7
+                    detalle = f"Aplicando tareas: {indice}/{total_tareas}"
+                    if descripcion_tarea:
+                        detalle = f"{detalle} - {descripcion_tarea}"
+                    reportar_progreso(fraccion, detalle)
+
             registrar("Guardando en NVRAM (wr mem)...")
+            reportar_progreso(0.85, "Guardando configuración en NVRAM")
             conn.save_config()
             prompt = conn.find_prompt()
 
+            reportar_progreso(0.9, "Validando configuración")
             hostname_actual = conn.find_prompt().rstrip("#")
             if hostname_esperado and hostname_actual != hostname_esperado:
                 desviaciones.append(f"Hostname esperado '{hostname_esperado}', encontrado '{hostname_actual}'")
@@ -103,6 +119,7 @@ class GestorRed:
             else:
                 registrar("✔ Validación OK: Configuración aplicada correctamente.")
 
+            reportar_progreso(1.0, "Finalizado")
             return prompt, desviaciones
 
     def realizar_respaldo(self, info_dispositivo, modo, ip_tftp=None, callback_log=None):
