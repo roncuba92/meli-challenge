@@ -1,6 +1,6 @@
 # AutoVPN-API (FortiGate por API + Palo Alto por API)
 
-Proyecto paralelo a `AutoVPN-SSH` que aplica la VPN FortiGate ↔ Palo Alto usando la API REST de ambos equipos. Reutiliza el mismo `vpn_config.json`. La planificación completa está en `../VPN_PLAN.md`.
+Proyecto paralelo a `tools/AutoVPN/AutoVPN-SSH` que aplica la VPN FortiGate ↔ Palo Alto usando la API REST de ambos equipos. Reutiliza el mismo `vpn_config.json`. La planificación completa está en `tools/AutoVPN/VPN_PLAN.md`.
 
 ## Estructura
 - `vpn_config.json`: parámetros únicos (IP WAN, túnel /30, subredes locales, PSK, propuestas, servicios/apps, interfaces).
@@ -17,16 +17,16 @@ Proyecto paralelo a `AutoVPN-SSH` que aplica la VPN FortiGate ↔ Palo Alto usan
 1) Edita parámetros en `vpn_config.json`.
 2) Solo generar archivos de configuración (macOS/Linux con `python3`):
    ```bash
-   python3 AutoVPN-API/deploy_vpn.py --config AutoVPN-API/vpn_config.json --fortigate-host 10.24.133.202 --fortigate-token <TOKEN> --paloalto-host <PA_IP> --paloalto-api-key <PA_KEY> --dry-run
+   python3 tools/AutoVPN/AutoVPN-API/deploy_vpn.py --config tools/AutoVPN/AutoVPN-API/vpn_config.json --fortigate-host 10.24.133.202 --fortigate-token <TOKEN> --paloalto-host <PA_IP> --paloalto-api-key <PA_KEY> --dry-run
    ```
-   En Windows usa `python` y ajusta la ruta: `python AutoVPN\\AutoVPN-API\\deploy_vpn.py --config AutoVPN\\AutoVPN-API\\vpn_config.json ...`
+   En Windows usa `python` y ajusta la ruta: `python tools\\AutoVPN\\AutoVPN-API\\deploy_vpn.py --config tools\\AutoVPN\\AutoVPN-API\\vpn_config.json ...`
 3) Aplicar Forti (API) + Palo (API):
    ```bash
-   python3 AutoVPN-API/deploy_vpn.py --config AutoVPN-API/vpn_config.json --fortigate-host 10.24.133.202 --fortigate-token <TOKEN> --paloalto-host <PA_IP> --paloalto-api-key <PA_KEY> [--paloalto-timeout 90]
+   python3 tools/AutoVPN/AutoVPN-API/deploy_vpn.py --config tools/AutoVPN/AutoVPN-API/vpn_config.json --fortigate-host 10.24.133.202 --fortigate-token <TOKEN> --paloalto-host <PA_IP> --paloalto-api-key <PA_KEY> [--paloalto-timeout 90]
    ```
    En Windows: 
    ```bash
-   python AutoVPN\\AutoVPN-API\\deploy_vpn.py ...
+   python tools\\AutoVPN\\AutoVPN-API\\deploy_vpn.py ...
    ```
    Añade `--skip-paloalto` si solo quieres Forti. Usa `--fortigate-verify`/`--paloalto-verify` si tienes certificados válidos y quieres validar TLS. Ajusta `--paloalto-timeout` si el commit demora más de ~60s.
 
@@ -35,7 +35,7 @@ Archivos de configuración generados en `outputs/`:
 - `paloalto_payloads.json`: payloads y xpaths para la API de Palo Alto.
 
 ## Notas rápidas
-- La planificación de parámetros y consideraciones de lab está en `../VPN_PLAN.md`.
+- La planificación de parámetros y consideraciones de lab está en `tools/AutoVPN/VPN_PLAN.md`.
 - La aplicación en Forti es idempotente: usa `PUT` y cae a `POST` si no existe; políticas/rutas se actualizan si ya hay una con el mismo nombre/destino.
 - Palo Alto usa API XML (`type=config`) con `set` y `commit`; crea/actualiza perfiles, gateway IKE, túnel, proxy-id, rutas, zona, objetos y reglas.
 - Si tienes varias subredes, se crean múltiples Phase2/Proxy-ID.

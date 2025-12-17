@@ -1,6 +1,6 @@
 # NetConfigurator (Automatización de tareas en Switch Cisco)
 
-Script en Python con interfaz gráfica (CustomTkinter) para configurar hostname y VLANs (ID y Nombre) en un switch Cisco IOS (físico o simulado) usando Netmiko. Permite validar la configuración aplicada, guardar en NVRAM y realizar respaldos locales o de forma remota vía TFTP.
+Script creado en Python con interfaz gráfica (CustomTkinter) para configurar hostname y VLANs (ID y Nombre) en un switch Cisco (IOS) usando Netmiko. Permite validar la configuración aplicada, guardar en NVRAM y realizar respaldos locales o de forma remota vía TFTP.
 
 ## Requisitos previos
 - Python 3.10 o superior.
@@ -23,9 +23,9 @@ uv pip install customtkinter netmiko
 
 ## Ejecución
 ```bash
-uv run python NetConfigurator/main.py
+uv run python tools/NetConfigurator/main.py
 ```
-También puedes activar el entorno (`source .venv/bin/activate`), entrar a `NetConfigurator/` y ejecutar `python main.py` si lo prefieres.
+También puedes activar el entorno (`source .venv/bin/activate`), entrar a `tools/NetConfigurator/` y ejecutar `python main.py` si lo prefieres.
 
 ## Uso rápido (UI)
 1. Ingresa dirección IP del switch, usuario y password local, password de enable; pulsa **Conectar**.
@@ -43,9 +43,9 @@ También puedes activar el entorno (`source .venv/bin/activate`), entrar a `NetC
 - Errores devueltos por el switch (comandos inválidos, VLAN fuera de rango, etc.) se registran y la tarea se marca como desviación.
 
 ## Estructura del proyecto
-- `NetConfigurator/main.py`: interfaz gráfica y gestión de tareas encoladas.
-- `NetConfigurator/core.py`: lógica de conexión, aplicación de cambios, validación y backups.
-- `NetConfigurator/screenshots/`: capturas de la UI y pruebas (ver `screenshots/ORDER.md` para un recorrido sugerido).
+- `tools/NetConfigurator/main.py`: interfaz gráfica y gestión de tareas encoladas.
+- `tools/NetConfigurator/core.py`: lógica de conexión, aplicación de cambios, validación y backups.
+- `tools/NetConfigurator/screenshots/`: capturas de la UI y pruebas (ver `tools/NetConfigurator/screenshots/ORDER.md` para un recorrido sugerido).
 
 ## Notas y buenas prácticas
 - Ejecuta la app desde una red con alcance SSH al switch y con la IP del TFTP accesible (si usas backup remoto).

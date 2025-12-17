@@ -1,6 +1,6 @@
 # Planificación y Evaluación de AutoVPN (FortiGate ↔ Palo Alto)
 
-Documento que resume los parámetros, herramientas y criterios de validación para la automatización de la VPN IPSec entre FortiGate y Palo Alto. Los scripts viven en `AutoVPN-SSH/` (Netmiko) y `AutoVPN-API/` (API REST/XML).
+Documento que resume los parámetros, herramientas y criterios de validación para la automatización de la VPN IPSec entre FortiGate y Palo Alto. Los scripts viven en `tools/AutoVPN/AutoVPN-SSH/` (Netmiko) y `tools/AutoVPN/AutoVPN-API/` (API REST/XML).
 
 ## Definición de Parámetros (Ejemplo para este laboratorio)
 - Red de túnel: `169.255.1.0/30`  
@@ -17,8 +17,8 @@ Documento que resume los parámetros, herramientas y criterios de validación pa
 La imagen virtual de FortiGate del laboratorio solo soporta cifrados básicos (perfil low-encryption). Se fuerza el uso de `DES/SHA1/Group2` en Fase 1/2 en vez de `AES256/SHA256` para asegurar compatibilidad con Palo Alto. En entornos productivos cambiar a suites fuertes y habilitar `strong-crypto` en ambos extremos.
 
 ## Herramientas y APIs
-- SSH/CLI: Netmiko (`device_type` `fortinet` y `paloalto_panos`) para aplicar plantillas en `AutoVPN-SSH/`.
-- API REST FortiOS: `requests` contra `/api/v2` (JSON, token Bearer) para crear objetos, interfaces, políticas y rutas en `AutoVPN-API/`.
+- SSH/CLI: Netmiko (`device_type` `fortinet` y `paloalto_panos`) para aplicar plantillas en `tools/AutoVPN/AutoVPN-SSH/`.
+- API REST FortiOS: `requests` contra `/api/v2` (JSON, token Bearer) para crear objetos, interfaces, políticas y rutas en `tools/AutoVPN/AutoVPN-API/`.
 - API Palo Alto: `requests` contra `/api/` usando XML + XPath. Diferencia clave: FortiOS es REST/JSON, mientras Palo Alto usa XML con operaciones `set/edit/commit` y rutas XPath exactas.
 
 ## Pasos de Automatización (flujo lógico)
@@ -45,8 +45,8 @@ La imagen virtual de FortiGate del laboratorio solo soporta cifrados básicos (p
   - Forti: `api/v2/monitor/vpn/ipsec` o `get vpn ipsec tunnel summary`.  
   - Palo Alto: `show vpn ike-sa gateway <nombre>` y `show vpn ipsec-sa tunnel <nombre>`.
 - **Pruebas de conectividad**: pings iniciados desde la IP de túnel (o desde subred LAN si la API lo permite). Éxito = respuestas ICMP o estado IKE/IPSec en `up/established`.
-- **Verificación básica por SSH**: `AutoVPN/validate_vpn.py` usa Netmiko para conectarse a ambos firewalls, consultar el estado IKE/IPSec en cada uno y (opcional) lanzar pings entre las IP de túnel. En este lab el ping suele fallar porque no hay política permitiendo ICMP entre las IP del túnel y la imagen de FortiGate de prueba limita las políticas; se puede usar `--skip-ping` o habilitar ICMP si el equipo lo permite.
+- **Verificación básica por SSH**: `tools/AutoVPN/validate_vpn.py` usa Netmiko para conectarse a ambos firewalls, consultar el estado IKE/IPSec en cada uno y (opcional) lanzar pings entre las IP de túnel. En este lab el ping suele fallar porque no hay política permitiendo ICMP entre las IP del túnel y la imagen de FortiGate de prueba limita las políticas; se puede usar `--skip-ping` o habilitar ICMP si el equipo lo permite.
 - **Reporte y Alertas**: 
-  - `AutoVPN/validate_vpn.py` sale con código ≠0 si el túnel cae o no hay respuesta ICMP; se integra directo en CI/crontab para generar alarmas. 
+  - `tools/AutoVPN/validate_vpn.py` sale con código ≠0 si el túnel cae o no hay respuesta ICMP; se integra directo en CI/crontab para generar alarmas. 
   - Notificación mínima: pipeline/cron detecta el exit code y envía webhook (Slack/Teams) con el JSON impreso por los scripts. 
   - Opcional: habilitar traps SNMP/Syslog nativos de cada firewall para eventos IKE/IPSec down y centralizarlos en el SIEM, como canal secundario.
