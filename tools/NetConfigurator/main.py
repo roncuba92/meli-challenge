@@ -1,9 +1,12 @@
 import customtkinter as ctk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import tkinter as tk
 import threading
 import datetime
 import os
+import sys
+import csv
+import ipaddress
 
 from core import GestorRed
 
@@ -24,12 +27,24 @@ VLAN_MIN = 1
 VLAN_MAX = 4094
 FONT_UI = ("Segoe UI", 11)
 FONT_BOLD = ("Segoe UI", 11, "bold")
+if sys.platform == "darwin":
+    FONT_MONO = ("Menlo", 10)
+elif os.name == "nt":
+    FONT_MONO = ("Consolas", 10)
+else:
+    FONT_MONO = ("DejaVu Sans Mono", 10)
 
 class AplicacionRed(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.backend = GestorRed()
         self.tareas = {}
+        self.switches = []
+        self.modo_multi = False
+        self._run_log_path = None
+        self._run_summary_path = None
+        self._run_summary = []
+        self._run_dir = None
         self.title("NetConfigurator")
         self.geometry("1100x720")
         self.resizable(False, False)
@@ -69,7 +84,10 @@ class AplicacionRed(ctk.CTk):
                                    border_width=1, border_color=COLOR_BORDE, width=100)
         boton_desconectar.pack(side="right", padx=5)
 
-        self._crear_boton(barra_encabezado, "Conectar", self.probar_conexion, lado="right", ancho=120)
+        boton_conectar = ctk.CTkButton(barra_encabezado, text="Conectar", command=self.probar_conexion,
+                                   height=BTN_HEIGHT, font=FONT_BOLD, text_color="white",
+                                   fg_color=COLOR_ACCION_PRINCIPAL, hover_color="#2c4a8c", width=120)
+        boton_conectar.pack(side="right", padx=5)
         
         self.etiqueta_estado = ctk.CTkLabel(barra_encabezado, text="Desconectado", font=("Segoe UI", 10, "bold"), text_color="gray")
         self.etiqueta_estado.pack(side="right", padx=(5, 15))
@@ -94,7 +112,7 @@ class AplicacionRed(ctk.CTk):
         ctk.CTkLabel(grp1, text="Hostname", font=("Segoe UI", 12), text_color="#666", anchor="w").pack(fill="x")
         self.entrada_hostname = ctk.CTkEntry(grp1, placeholder_text="Nuevo nombre", height=INPUT_HEIGHT, font=FONT_UI, border_color=COLOR_BORDE, fg_color="#F9F9F9", text_color="black")
         self.entrada_hostname.pack(fill="x", pady=(2,5))
-        self._crear_boton(grp1, "Agregar", self.agregar_tarea_hostname)
+        self.boton_hostname = self._crear_boton(grp1, "Agregar", self.agregar_tarea_hostname)
 
     def _construir_seccion_vlan(self):
         grp2 = ctk.CTkFrame(self.panel_izquierdo, fg_color="transparent")
@@ -129,52 +147,105 @@ class AplicacionRed(ctk.CTk):
     def _construir_panel_derecho(self):
         self.panel_derecho = ctk.CTkFrame(self, corner_radius=8, fg_color=COLOR_PANEL, border_width=1, border_color=COLOR_BORDE)
         self.panel_derecho.grid(row=1, column=1, sticky="nsew", padx=(0, 20), pady=20)
+        self.panel_derecho.grid_rowconfigure(0, weight=0)
+        self.panel_derecho.grid_rowconfigure(1, weight=1)
+        self.panel_derecho.grid_rowconfigure(2, weight=0)
+        self.panel_derecho.grid_columnconfigure(0, weight=1)
 
         cabecera_derecha = ctk.CTkFrame(self.panel_derecho, fg_color="transparent", height=30)
-        cabecera_derecha.pack(fill="x", padx=20, pady=(15, 10))
-        ctk.CTkLabel(cabecera_derecha, text="TAREAS A EJECUTAR", font=FONT_BOLD, text_color="#555").pack(anchor="w")
+        cabecera_derecha.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 10))
+        ctk.CTkLabel(cabecera_derecha, text="TAREAS A EJECUTAR", font=FONT_BOLD, text_color="#555").pack(side="left")
+
+        acciones_csv = ctk.CTkFrame(cabecera_derecha, fg_color="transparent")
+        acciones_csv.pack(side="right")
+        boton_csv = ctk.CTkButton(
+            acciones_csv,
+            text="Cargar Datos (.txt)",
+            command=self.cargar_csv_switches,
+            height=28,
+            font=("Segoe UI", 10),
+            text_color=COLOR_TEXTO,
+            fg_color=COLOR_BTN_BASE,
+            hover_color=COLOR_BTN_HOVER,
+            border_width=1,
+            border_color=COLOR_BORDE,
+            width=100,
+        )
+        boton_csv.pack(side="left", padx=(0, 6))
+
+        boton_limpiar_csv = ctk.CTkButton(
+            acciones_csv,
+            text="Limpiar Datos (.txt)",
+            command=self.limpiar_switches,
+            height=28,
+            font=("Segoe UI", 10),
+            text_color="#C0392B",
+            fg_color=COLOR_BTN_BASE,
+            hover_color="#ffcccc",
+            border_width=1,
+            border_color=COLOR_BORDE,
+            width=100,
+        )
+        boton_limpiar_csv.pack(side="left")
 
         estilo = ttk.Style()
         estilo.theme_use("clam")
-        estilo.configure("Treeview", background="white", foreground=COLOR_TEXTO, fieldbackground="white", 
-                        borderwidth=0, rowheight=28, font=("Segoe UI", 11))
-        estilo.map('Treeview', background=[('selected', '#E8F0FE')], foreground=[('selected', '#1967D2')])
-        estilo.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+        estilo.configure("Command.Treeview", background="white", foreground=COLOR_TEXTO, fieldbackground="white", 
+                        borderwidth=0, rowheight=28, font=FONT_MONO)
+        estilo.map("Command.Treeview", background=[("selected", "#E8F0FE")], foreground=[("selected", "#1967D2")])
+        estilo.layout("Command.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
 
-        self.arbol_tareas = ttk.Treeview(self.panel_derecho, columns=("type", "task"), show="tree")
-        self.arbol_tareas.column("#0", width=0, stretch=tk.NO)
-        self.arbol_tareas.column("type", width=0, stretch=tk.NO)
-        self.arbol_tareas.column("task", width=400, anchor="w")
+        lista_frame = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
+        lista_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
+        lista_frame.grid_rowconfigure(0, weight=1)
+        lista_frame.grid_columnconfigure(0, weight=1)
+
+        self.arbol_tareas = ttk.Treeview(lista_frame, show="tree", style="Command.Treeview")
+        self.arbol_tareas.column("#0", width=520, stretch=True, anchor="w")
         
-        barra_desplazamiento = ctk.CTkScrollbar(self.panel_derecho, orientation="vertical", command=self.arbol_tareas.yview)
+        barra_desplazamiento = ctk.CTkScrollbar(lista_frame, orientation="vertical", command=self.arbol_tareas.yview)
         self.arbol_tareas.configure(yscrollcommand=barra_desplazamiento.set)
         
-        self.arbol_tareas.pack(side="left", fill="both", expand=True, padx=(20,0), pady=(0,10))
-        barra_desplazamiento.pack(side="right", fill="y", pady=(0,10), padx=(0,20))
+        self.arbol_tareas.grid(row=0, column=0, sticky="nsew")
+        barra_desplazamiento.grid(row=0, column=1, sticky="ns", padx=(8, 0))
 
-        self.marco_progreso = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
-        self.marco_progreso.pack(fill="x", padx=20, pady=(0, 10))
-        self.etiqueta_progreso = ctk.CTkLabel(self.marco_progreso, text="Progreso: 0%", font=("Segoe UI", 10), text_color="#777")
-        self.etiqueta_progreso.pack(anchor="w")
-        self.barra_progreso = ctk.CTkProgressBar(self.marco_progreso, height=10, progress_color=COLOR_ACCION_PRINCIPAL)
-        self.barra_progreso.pack(fill="x", pady=(4, 0))
+        acciones_container = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
+        acciones_container.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 20))
+        ctk.CTkFrame(acciones_container, height=1, fg_color=COLOR_BORDE).pack(fill="x", pady=(0, 10))
+
+        self.marco_acciones = ctk.CTkFrame(
+            acciones_container,
+            corner_radius=8,
+            fg_color="#F9FAFB",
+            border_width=1,
+            border_color=COLOR_BORDE,
+        )
+        self.marco_acciones.pack(fill="x")
+        self.marco_acciones.grid_columnconfigure(0, weight=1)
+        self.marco_acciones.grid_columnconfigure(1, weight=0)
+
+        progreso_frame = ctk.CTkFrame(self.marco_acciones, fg_color="transparent")
+        progreso_frame.grid(row=0, column=0, sticky="ew", padx=12, pady=10)
+        progreso_frame.grid_columnconfigure(0, weight=1)
+        self.etiqueta_progreso = ctk.CTkLabel(progreso_frame, text="Progreso: 0%", font=("Segoe UI", 10), text_color="#777")
+        self.etiqueta_progreso.grid(row=0, column=0, sticky="w")
+        self.barra_progreso = ctk.CTkProgressBar(progreso_frame, height=10, progress_color=COLOR_ACCION_PRINCIPAL)
+        self.barra_progreso.grid(row=1, column=0, sticky="ew", pady=(4, 0))
         self.barra_progreso.set(0)
 
-        pie = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
-        pie.pack(fill="x", padx=20, pady=(0, 20), side="bottom")
-        pie.columnconfigure(0, weight=1)
-        pie.columnconfigure(1, weight=1)
+        botones_frame = ctk.CTkFrame(self.marco_acciones, fg_color="transparent")
+        botones_frame.grid(row=0, column=1, sticky="e", padx=12, pady=10)
 
-        boton_quitar = ctk.CTkButton(pie, text="Quitar Seleccionado", command=self.quitar_tarea,
+        boton_aplicar = ctk.CTkButton(botones_frame, text="Aplicar Cambios", command=self.ejecutar_cola_en_hilo,
+                                   height=BTN_HEIGHT, font=FONT_BOLD, text_color="white",
+                                   fg_color=COLOR_ACCION_PRINCIPAL, hover_color="#2c4a8c")
+        boton_aplicar.grid(row=0, column=0, padx=(0, 8))
+
+        boton_quitar = ctk.CTkButton(botones_frame, text="Quitar Seleccionado", command=self.quitar_tarea,
                                    height=BTN_HEIGHT, font=FONT_UI, text_color="#C0392B",
                                    fg_color=COLOR_BTN_BASE, hover_color="#ffcccc",
                                    border_width=1, border_color=COLOR_BORDE, width=100)
-        boton_quitar.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-
-        boton_aplicar = ctk.CTkButton(pie, text="Aplicar Cambios", command=self.ejecutar_cola_en_hilo,
-                                   height=BTN_HEIGHT, font=FONT_BOLD, text_color="white",
-                                   fg_color=COLOR_ACCION_PRINCIPAL, hover_color="#2c4a8c")
-        boton_aplicar.grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        boton_quitar.grid(row=0, column=1)
 
     def _construir_logs(self):
         self.marco_logs = ctk.CTkFrame(self, corner_radius=0, fg_color="#F9F9F9", height=100)
@@ -216,8 +287,193 @@ class AplicacionRed(ctk.CTk):
 
     def registrar(self, msg):
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        self.caja_logs.insert("end", f"[{timestamp}] {msg}\n")
+        linea = f"[{timestamp}] {msg}\n"
+        self.caja_logs.insert("end", linea)
         self.caja_logs.see("end")
+        if self._run_log_path:
+            try:
+                with open(self._run_log_path, "a", encoding="utf-8") as archivo:
+                    archivo.write(linea)
+            except Exception:
+                pass
+
+    def _iniciar_ejecucion(self, etiqueta):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        runs_dir = os.path.join(base_dir, "runs")
+        run_dir = os.path.join(runs_dir, timestamp)
+        os.makedirs(run_dir, exist_ok=True)
+        self._run_dir = run_dir
+        self._run_log_path = os.path.join(run_dir, "run.log")
+        self._run_summary_path = os.path.join(run_dir, "summary.csv")
+        self._run_summary = []
+        try:
+            with open(self._run_log_path, "w", encoding="utf-8") as archivo:
+                archivo.write(f"Inicio de ejecucion: {etiqueta}\n")
+        except Exception:
+            pass
+
+    def _finalizar_ejecucion(self):
+        if not self._run_summary_path:
+            return
+        try:
+            with open(self._run_summary_path, "w", encoding="utf-8", newline="") as archivo:
+                writer = csv.DictWriter(archivo, fieldnames=["ip", "hostname", "status", "details"])
+                writer.writeheader()
+                writer.writerows(self._run_summary)
+        except Exception:
+            pass
+        if self._run_dir:
+            self.registrar(f">>> Logs guardados en: {self._run_dir}")
+        self._run_log_path = None
+        self._run_summary_path = None
+        self._run_summary = []
+        self._run_dir = None
+
+    def cargar_csv_switches(self):
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar TXT de switches",
+            filetypes=[("TXT (comas)", "*.txt"), ("CSV", "*.csv"), ("Todos los archivos", "*.*")],
+        )
+        if not ruta:
+            return
+
+        try:
+            with open(ruta, "r", encoding="utf-8-sig", newline="") as archivo:
+                muestra = archivo.read(2048)
+                archivo.seek(0)
+                try:
+                    dialecto = csv.Sniffer().sniff(muestra)
+                except csv.Error:
+                    dialecto = csv.excel
+
+                lector = csv.reader(archivo, dialecto)
+                filas = [fila for fila in lector if any(c.strip() for c in fila)]
+        except Exception as exc:
+            messagebox.showerror("TXT", f"No se pudo leer el archivo: {exc}")
+            return
+
+        if not filas:
+            messagebox.showwarning("TXT", "El archivo TXT está vacío.")
+            return
+
+        encabezado = [c.strip().lower() for c in filas[0]]
+        tiene_encabezado = any("ip" in c for c in encabezado) and any(
+            "hostname" in c or c in ("host", "nombre", "name") for c in encabezado
+        )
+
+        switches = []
+        if tiene_encabezado:
+            def _buscar_columna(nombres, candidatos):
+                for cand in candidatos:
+                    for idx, nombre in enumerate(nombres):
+                        if cand in nombre:
+                            return idx
+                return None
+
+            idx_ip = _buscar_columna(encabezado, ["ip", "address", "direccion"])
+            idx_hostname = _buscar_columna(encabezado, ["hostname", "nombre", "name", "host"])
+
+            if idx_ip is None or idx_hostname is None:
+                messagebox.showerror("TXT", "Faltan columnas requeridas (ip, hostname).")
+                return
+
+            datos = filas[1:]
+            for idx, fila in enumerate(datos, start=2):
+                if len(fila) <= max(idx_ip, idx_hostname):
+                    continue
+                ip = fila[idx_ip].strip()
+                hostname = fila[idx_hostname].strip()
+                if ip and hostname:
+                    switches.append({"ip": ip, "hostname": hostname, "linea": idx})
+        else:
+            for idx, fila in enumerate(filas, start=1):
+                if len(fila) < 2:
+                    continue
+                ip = fila[0].strip()
+                hostname = fila[1].strip()
+                if ip and hostname:
+                    switches.append({"ip": ip, "hostname": hostname, "linea": idx})
+
+        if not switches:
+            messagebox.showwarning("TXT", "No se encontraron filas válidas (ip, hostname).")
+            return
+
+        errores = self._validar_switches_csv(switches)
+        if errores:
+            resumen = "\n".join(errores[:5])
+            extra = ""
+            if len(errores) > 5:
+                extra = f"\n... y {len(errores) - 5} más."
+            messagebox.showerror("TXT", f"Errores en TXT:\n{resumen}{extra}")
+            return
+
+        self.switches = switches
+        self._actualizar_lista_switches()
+        self._set_modo_multi(True)
+        self._sincronizar_tareas_csv()
+        self.registrar(f">>> Switches cargados desde TXT: {len(self.switches)}")
+
+    def limpiar_switches(self):
+        self.switches = []
+        self._actualizar_lista_switches()
+        self._limpiar_tareas_csv()
+        self._set_modo_multi(False)
+        self.registrar(">>> Lista de switches limpiada.")
+
+    def _actualizar_lista_switches(self):
+        return
+
+    def _limpiar_tareas_csv(self):
+        for item_id, tarea in list(self.tareas.items()):
+            if tarea.get("origen") == "csv":
+                self.arbol_tareas.delete(item_id)
+                self.tareas.pop(item_id, None)
+
+    def _sincronizar_tareas_csv(self):
+        self._limpiar_tareas_csv()
+        for sw in self.switches:
+            hostname = sw.get("hostname")
+            ip = sw.get("ip")
+            if not hostname or not ip:
+                continue
+            comando = f"hostname {hostname}  [{ip}]"
+            descripcion = f"Configurar Hostname: {hostname} ({ip})"
+            self._insertar_tarea(
+                "HOSTNAME",
+                descripcion,
+                {"hostname": hostname, "target_ip": ip, "origen": "csv"},
+                comando,
+            )
+
+    def _set_modo_multi(self, activo):
+        self.modo_multi = activo
+        estado = "disabled" if activo else "normal"
+        self.entrada_hostname.configure(state=estado)
+        self.boton_hostname.configure(state=estado)
+
+    def _validar_switches_csv(self, switches):
+        errores = []
+        vistos = set()
+        for sw in switches:
+            ip = sw.get("ip", "").strip()
+            hostname = sw.get("hostname", "").strip()
+            linea = sw.get("linea", "?")
+            if not ip or not hostname:
+                errores.append(f"Linea {linea}: faltan ip/hostname")
+                continue
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                errores.append(f"Linea {linea}: IP inválida ({ip})")
+            if ip in vistos:
+                errores.append(f"Linea {linea}: IP duplicada ({ip})")
+            vistos.add(ip)
+            if " " in hostname:
+                errores.append(f"Linea {linea}: hostname con espacios ({hostname})")
+            if len(hostname) > 63:
+                errores.append(f"Linea {linea}: hostname muy largo ({hostname})")
+        return errores
 
     def _actualizar_progreso(self, fraccion, texto=None):
         fraccion = max(0.0, min(1.0, fraccion))
@@ -232,8 +488,9 @@ class AplicacionRed(ctk.CTk):
 
         self.after(0, _update)
 
-    def _insertar_tarea(self, tipo, descripcion, payload):
-        item_id = self.arbol_tareas.insert("", "end", values=(tipo, descripcion))
+    def _insertar_tarea(self, tipo, descripcion, payload, comando=None):
+        texto_mostrar = comando or descripcion
+        item_id = self.arbol_tareas.insert("", "end", text=texto_mostrar)
         self.tareas[item_id] = {"tipo": tipo, "descripcion": descripcion, **payload}
         return item_id
 
@@ -242,7 +499,8 @@ class AplicacionRed(ctk.CTk):
         if not nombre:
             messagebox.showwarning("Hostname", "Ingrese un nombre válido.")
             return
-        self._insertar_tarea("HOSTNAME", f"Configurar Hostname: {nombre}", {"hostname": nombre})
+        comando = f"hostname {nombre}"
+        self._insertar_tarea("HOSTNAME", f"Configurar Hostname: {nombre}", {"hostname": nombre}, comando)
         self.entrada_hostname.delete(0, "end")
 
     def agregar_tarea_vlan(self):
@@ -258,10 +516,12 @@ class AplicacionRed(ctk.CTk):
             messagebox.showwarning("VLAN", f"ID fuera de rango ({VLAN_MIN}-{VLAN_MAX}).")
             return
 
+        comando = f"vlan {vlan_id} name {vlan_nombre}"
         self._insertar_tarea(
             "VLAN",
             f"Configurar VLAN {vlan_id}: Nombre '{vlan_nombre}'",
             {"vlan_id": vlan_id, "vlan_nombre": vlan_nombre},
+            comando,
         )
         self.entrada_vlan_id.delete(0, "end")
         self.entrada_vlan_nombre.delete(0, "end")
@@ -306,7 +566,7 @@ class AplicacionRed(ctk.CTk):
 
     def _worker_ejecutar_cola(self):
         elementos = self.arbol_tareas.get_children()
-        if not elementos:
+        if not elementos and not self.switches:
             self._actualizar_progreso(0, "Progreso: 0%")
             messagebox.showinfo("Info", "Lista vacía")
             return
@@ -314,7 +574,97 @@ class AplicacionRed(ctk.CTk):
         lista_tareas = [self.tareas.get(item) for item in elementos if item in self.tareas]
         lista_tareas = [t for t in lista_tareas if t]  # filtra nulos por si faltan entradas
 
+        if self.switches:
+            tareas_vlan = [t for t in lista_tareas if t.get("tipo") == "VLAN"]
+            tareas_hostname = [
+                t for t in lista_tareas
+                if t.get("tipo") == "HOSTNAME" and t.get("target_ip")
+            ]
+            usuarios = self._obtener_credenciales()
+            if not usuarios.get("username") or not usuarios.get("password") or not usuarios.get("secret"):
+                messagebox.showwarning("Credenciales", "Ingrese usuario, password y enable.")
+                return
+
+            self._iniciar_ejecucion("multi-switch")
+            self._actualizar_progreso(0, "Preparando... (0%)")
+            errores = []
+            total_switches = len(self.switches)
+
+            try:
+                for indice, sw in enumerate(self.switches, start=1):
+                    ip = sw["ip"]
+                    hostname = sw.get("hostname", "")
+                    credenciales = self.backend.obtener_info_dispositivo(ip, usuarios["username"], usuarios["password"], usuarios["secret"])
+
+                    tareas_dispositivo = list(tareas_vlan)
+                    tareas_dispositivo.extend(t for t in tareas_hostname if t.get("target_ip") == ip)
+                    if not tareas_dispositivo:
+                        self.registrar(f">>> Switch {indice}/{total_switches}: {ip} sin tareas asignadas.")
+                        self._run_summary.append({
+                            "ip": ip,
+                            "hostname": hostname,
+                            "status": "SKIPPED",
+                            "details": "Sin tareas asignadas",
+                        })
+                        continue
+
+                    def progreso_cb(fraccion, descripcion, idx=indice, ip_actual=ip, total=total_switches):
+                        fraccion_global = (idx - 1 + fraccion) / total
+                        prefijo = f"Switch {idx}/{total} {ip_actual}"
+                        detalle = f"{prefijo} - {descripcion}" if descripcion else prefijo
+                        porcentaje = int(fraccion_global * 100)
+                        self._actualizar_progreso(fraccion_global, f"{detalle} ({porcentaje}%)")
+
+                    try:
+                        self.registrar(f">>> Switch {indice}/{total_switches}: {ip}")
+                        _, desviaciones = self.backend.aplicar_cambios(
+                            credenciales,
+                            tareas_dispositivo,
+                            callback_log=self.registrar,
+                            callback_progreso=progreso_cb,
+                        )
+                        if desviaciones:
+                            self._run_summary.append({
+                                "ip": ip,
+                                "hostname": hostname,
+                                "status": "WARN",
+                                "details": "Desviaciones en validación",
+                            })
+                        else:
+                            self._run_summary.append({
+                                "ip": ip,
+                                "hostname": hostname,
+                                "status": "OK",
+                                "details": "",
+                            })
+                    except Exception as exc:
+                        errores.append(f"{ip}: {exc}")
+                        self.registrar(f"ERROR SWITCH {ip}: {exc}")
+                        self._run_summary.append({
+                            "ip": ip,
+                            "hostname": hostname,
+                            "status": "ERROR",
+                            "details": str(exc),
+                        })
+                        continue
+            finally:
+                self._finalizar_ejecucion()
+
+            if errores:
+                messagebox.showwarning("Multi-switch", "Algunos switches fallaron. Ver consola de logs.")
+            else:
+                messagebox.showinfo("Éxito", "Cambios aplicados en todos los switches.")
+
+            for item in elementos:
+                self.tareas.pop(item, None)
+                self.arbol_tareas.delete(item)
+
+            self._actualizar_progreso(0, "Progreso: 0%")
+            self.limpiar_switches()
+            return
+
         try:
+            self._iniciar_ejecucion("single-switch")
             def progreso_cb(fraccion, descripcion):
                 porcentaje = int(fraccion * 100)
                 if descripcion:
@@ -332,6 +682,23 @@ class AplicacionRed(ctk.CTk):
             )
             self._actualizar_progreso(1, "Progreso: 100%")
 
+            ip = self.entrada_ip.get().strip()
+            hostname = next((t.get("hostname") for t in lista_tareas if t.get("tipo") == "HOSTNAME"), "")
+            if desviaciones:
+                self._run_summary.append({
+                    "ip": ip,
+                    "hostname": hostname,
+                    "status": "WARN",
+                    "details": "Desviaciones en validación",
+                })
+            else:
+                self._run_summary.append({
+                    "ip": ip,
+                    "hostname": hostname,
+                    "status": "OK",
+                    "details": "",
+                })
+
             if nuevo_prompt:
                 self.etiqueta_estado.configure(text=f"Online: {nuevo_prompt}", text_color="#27AE60")
                 self.etiqueta_punto.configure(text_color="#27AE60")
@@ -346,10 +713,22 @@ class AplicacionRed(ctk.CTk):
             for item in elementos:
                 self.tareas.pop(item, None)
                 self.arbol_tareas.delete(item)
+
+            self._actualizar_progreso(0, "Progreso: 0%")
             
         except Exception as e:
             self.registrar(f"ERROR CRÍTICO: {e}")
             messagebox.showerror("Error", str(e))
+            ip = self.entrada_ip.get().strip()
+            self._run_summary.append({
+                "ip": ip,
+                "hostname": "",
+                "status": "ERROR",
+                "details": str(e),
+            })
+            self._actualizar_progreso(0, "Progreso: 0%")
+        finally:
+            self._finalizar_ejecucion()
 
     def _worker_desconectar(self):
         self.etiqueta_estado.configure(text="Cerrando...", text_color="#F39C12")
