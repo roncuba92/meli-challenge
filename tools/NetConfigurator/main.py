@@ -1,6 +1,5 @@
 import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog
-import tkinter as tk
 import threading
 import datetime
 import os
@@ -148,8 +147,9 @@ class AplicacionRed(ctk.CTk):
         self.panel_derecho = ctk.CTkFrame(self, corner_radius=8, fg_color=COLOR_PANEL, border_width=1, border_color=COLOR_BORDE)
         self.panel_derecho.grid(row=1, column=1, sticky="nsew", padx=(0, 20), pady=20)
         self.panel_derecho.grid_rowconfigure(0, weight=0)
-        self.panel_derecho.grid_rowconfigure(1, weight=1)
-        self.panel_derecho.grid_rowconfigure(2, weight=0)
+        self.panel_derecho.grid_rowconfigure(1, weight=0)
+        self.panel_derecho.grid_rowconfigure(2, weight=1)
+        self.panel_derecho.grid_rowconfigure(3, weight=0)
         self.panel_derecho.grid_columnconfigure(0, weight=1)
 
         cabecera_derecha = ctk.CTkFrame(self.panel_derecho, fg_color="transparent", height=30)
@@ -196,7 +196,7 @@ class AplicacionRed(ctk.CTk):
         estilo.layout("Command.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
 
         lista_frame = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
-        lista_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
+        lista_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=(0, 10))
         lista_frame.grid_rowconfigure(0, weight=1)
         lista_frame.grid_columnconfigure(0, weight=1)
 
@@ -210,7 +210,7 @@ class AplicacionRed(ctk.CTk):
         barra_desplazamiento.grid(row=0, column=1, sticky="ns", padx=(8, 0))
 
         acciones_container = ctk.CTkFrame(self.panel_derecho, fg_color="transparent")
-        acciones_container.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 20))
+        acciones_container.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 20))
         ctk.CTkFrame(acciones_container, height=1, fg_color=COLOR_BORDE).pack(fill="x", pady=(0, 10))
 
         self.marco_acciones = ctk.CTkFrame(
@@ -333,7 +333,7 @@ class AplicacionRed(ctk.CTk):
     def cargar_csv_switches(self):
         ruta = filedialog.askopenfilename(
             title="Seleccionar TXT de switches",
-            filetypes=[("TXT (comas)", "*.txt"), ("CSV", "*.csv"), ("Todos los archivos", "*.*")],
+            filetypes=[("TXT/CSV (coma o ;)", "*.txt"), ("CSV", "*.csv"), ("Todos los archivos", "*.*")],
         )
         if not ruta:
             return
@@ -409,20 +409,16 @@ class AplicacionRed(ctk.CTk):
             return
 
         self.switches = switches
-        self._actualizar_lista_switches()
         self._set_modo_multi(True)
         self._sincronizar_tareas_csv()
-        self.registrar(f">>> Switches cargados desde TXT: {len(self.switches)}")
+        self.registrar(f">>> {len(self.switches)} switches cargados desde archivo externo.")
+        self.registrar(">>> Nota: multi-switch usa las mismas credenciales (usuario/password/enable).")
 
     def limpiar_switches(self):
         self.switches = []
-        self._actualizar_lista_switches()
         self._limpiar_tareas_csv()
         self._set_modo_multi(False)
         self.registrar(">>> Lista de switches limpiada.")
-
-    def _actualizar_lista_switches(self):
-        return
 
     def _limpiar_tareas_csv(self):
         for item_id, tarea in list(self.tareas.items()):

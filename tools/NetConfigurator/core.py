@@ -1,6 +1,5 @@
 import os
 import datetime
-import re
 from netmiko import ConnectHandler
 
 ERROR_PATTERNS = ("invalid","incomplete","ambiguous","error","denied","not allowed","% ",)
@@ -173,15 +172,6 @@ class GestorRed:
         except Exception as exc:
             registrar(f"No se pudo cerrar sesión: {exc}")
             raise
-
-    @staticmethod
-    def _parsear_tarea_vlan(descripcion):
-        if not descripcion:
-            return None, None
-        match = re.search(r"VLAN\s+(\d+)\s*:\s*Nombre\s*'?(.*?)'?$", descripcion.strip())
-        if not match:
-            return None, None
-        return match.group(1), match.group(2).strip()
 
     @staticmethod
     def _salida_con_error(salida):

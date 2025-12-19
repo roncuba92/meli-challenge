@@ -39,16 +39,18 @@ También puedes activar el entorno (`source .venv/bin/activate`), entrar a `tool
    - **Servidor Remoto (TFTP)**: ingresa IP TFTP y pulsa **Enviar a TFTP**. La salida del comando de copia se registra.
 
 ## TXT de switches (multi-switch)
-Puedes cargar un archivo `.txt` separado por comas con `ip` y `hostname` para aplicar las VLANs a varios switches y asignar el hostname correspondiente.
+Puedes cargar un archivo `.txt` o `.csv` con columnas `ip` y `hostname` para aplicar las VLANs a varios switches y asignar el hostname correspondiente. El separador puede ser **coma** o **punto y coma** (se detecta automáticamente). El encabezado es opcional, pero si existe debe incluir `ip` y `hostname` (o variantes como `host`, `name`, `nombre`).
 
-Formato esperado (`.txt` separado por comas):
+Importante: en modo multi-switch se usan las mismas credenciales (usuario/password/enable) para todos los equipos.
+
+Formato esperado (con encabezado):
 ```csv
-ip,hostname
-10.0.0.10,SW_CORE_01
-10.0.0.11,SW_ACCESS_01
+ip;hostname
+10.0.0.10;SW_CORE_01
+10.0.0.11;SW_ACCESS_01
 ```
 
-Ejemplo incluido: `tools/NetConfigurator/examples/switches_example.txt`.
+Ejemplo incluido: `tools/NetConfigurator/examples/switches_example.txt` (usa `;`).
 
 ## Validación y logs
 - El backend revisa que el hostname resulte el esperado y que cada VLAN solicitada exista con el nombre indicado; cualquier discrepancia se muestra en los logs y en la alerta de la UI.
@@ -61,7 +63,7 @@ Ejemplo incluido: `tools/NetConfigurator/examples/switches_example.txt`.
 ## Estructura del proyecto
 - `tools/NetConfigurator/main.py`: interfaz gráfica y gestión de tareas encoladas.
 - `tools/NetConfigurator/core.py`: lógica de conexión, aplicación de cambios, validación y backups.
-- `tools/NetConfigurator/screenshots/`: capturas de la UI y pruebas (ver `tools/NetConfigurator/screenshots/ORDER.md` para un recorrido sugerido).
+- `tools/NetConfigurator/examples/`: archivos de ejemplo para carga multi-switch.
 
 ## Notas y buenas prácticas
 - Ejecuta la app desde una red con alcance SSH al switch y con la IP del TFTP accesible (si usas backup remoto).
